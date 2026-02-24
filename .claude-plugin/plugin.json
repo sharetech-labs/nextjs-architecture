@@ -1,0 +1,33 @@
+{
+  "name": "nextjs-architecture-skills",
+  "version": "1.0.0",
+  "displayName": "Next.js Architecture Skills",
+  "description": "14 Claude Code skills for Next.js App Router architecture — covering Server/Client Components, data fetching, caching, routing, Suspense patterns, and Vercel AI SDK.",
+  "author": "sharetech-labs",
+  "repository": "https://github.com/sharetech-labs/nextjs-architecture-skills",
+  "license": "MIT",
+  "skills": [
+    "skills/nextjs-app-router-fundamentals",
+    "skills/nextjs-server-client-components",
+    "skills/nextjs-server-navigation",
+    "skills/nextjs-advanced-routing",
+    "skills/nextjs-dynamic-routes-params",
+    "skills/nextjs-pathname-id-fetch",
+    "skills/nextjs-use-search-params-suspense",
+    "skills/nextjs-client-cookie-pattern",
+    "skills/nextjs-anti-patterns",
+    "skills/vercel-ai-sdk",
+    "skills/nextjs16-server-data-architecture",
+    "skills/nextjs16-cache-revalidation",
+    "skills/nextjs16-use-hook-data-flow",
+    "skills/nextjs16-page-level-suspense"
+  ],
+  "keywords": [
+    "nextjs",
+    "react",
+    "app-router",
+    "server-components",
+    "architecture",
+    "vercel-ai-sdk"
+  ]
+}

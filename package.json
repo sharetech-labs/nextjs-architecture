@@ -1,0 +1,29 @@
+{
+  "name": "@sharetech-labs/nextjs-claude-skills",
+  "version": "1.0.0",
+  "description": "14 Claude Code skills for Next.js App Router architecture — Server/Client Components, data fetching, caching, routing, Suspense patterns, and Vercel AI SDK.",
+  "author": "sharetech-labs",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sharetech-labs/nextjs-architecture-skills.git"
+  },
+  "keywords": [
+    "claude-code",
+    "claude-skills",
+    "nextjs",
+    "react",
+    "app-router",
+    "server-components",
+    "vercel-ai-sdk"
+  ],
+  "bin": {
+    "nextjs-claude-skills": "bin/install.js"
+  },
+  "files": [
+    "bin/",
+    "skills/",
+    "README.md",
+    "LICENSE"
+  ]
+}
