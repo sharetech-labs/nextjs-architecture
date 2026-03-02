@@ -216,59 +216,77 @@ export default function ProductList({
 
 The data comes from the server via `use()`. The filter is purely local UI state. No useEffect needed.
 
-## Optimistic Updates with useOptimistic
+## Optimistic UI Updates with useOptimistic
 
-For mutations that should show immediate feedback before the server confirms:
+`useOptimistic` provides immediate UI feedback before the server confirms a mutation. It is **optimistic UI state**, not cache invalidation — it must always be paired with a server-side freshness strategy (`updateTag` for cached data, `refresh` for uncached dynamic data).
+
+### Complete pattern with pending state and error handling
 
 ```tsx
 'use client'
 
-import { use, useOptimistic } from 'react'
+import { use, useOptimistic, useState, useTransition } from 'react'
 import { removeItem } from '@/actions/remove-item'
-import type { Item } from '@/types'
 
-export default function ItemList({
-  itemsPromise,
-  listId,
-}: {
-  itemsPromise: Promise<Item[]>
-  listId: string
-}) {
+export default function ItemList({ itemsPromise }: { itemsPromise: Promise<Item[]> }) {
   const items = use(itemsPromise)
+  const [isPending, startTransition] = useTransition()
+  const [error, setError] = useState<string | null>(null)
 
   const [optimisticItems, removeOptimistic] = useOptimistic(
     items,
     (state, removedId: string) => state.filter((item) => item.id !== removedId)
   )
 
-  const handleRemove = async (itemId: string) => {
-    // Immediately update UI
+  const handleRemove = (itemId: string) => {
+    setError(null)
     removeOptimistic(itemId)
 
-    // Server Action writes to DB + calls revalidateTag()
-    await removeItem(itemId, listId)
-    // After revalidation, the Server Component re-renders with fresh data
+    startTransition(async () => {
+      try {
+        await removeItem(itemId) // Server Action does updateTag() or refresh()
+      } catch {
+        setError('Could not remove item. Retrying with server state.')
+        // fallback: reconcile from server on next navigation/refresh
+      }
+    })
   }
 
   return (
-    <ul>
-      {optimisticItems.map((item) => (
-        <li key={item.id}>
-          {item.name}
-          <button onClick={() => handleRemove(item.id)}>Remove</button>
-        </li>
-      ))}
-    </ul>
+    <div>
+      {error ? <p>{error}</p> : null}
+      <ul>
+        {optimisticItems.map((item) => (
+          <li key={item.id}>
+            {item.name}
+            <button disabled={isPending} onClick={() => handleRemove(item.id)}>
+              Remove
+            </button>
+          </li>
+        ))}
+      </ul>
+    </div>
   )
 }
 ```
 
-The flow:
-1. `useOptimistic` removes the item from the UI instantly
-2. Server Action writes to the database and calls `revalidateTag()`
-3. Next.js refetches the tagged data on the server
-4. Server Component re-renders with the authoritative fresh data
-5. The optimistic state is replaced by the real server state
+### Key requirements for optimistic UI
+
+1. **Pending state guard** — Use `useTransition`, `useActionState`, or `useFormStatus` to prevent duplicate submissions and show pending UI
+2. **Error rollback** — On failure, either revert the optimistic change explicitly or call `router.refresh()` to reconcile with server state
+3. **Server-side freshness** — The Server Action must handle cache invalidation:
+   - Cached data with read-your-own-writes: `updateTag(tag)`
+   - Uncached dynamic data: `refresh()`
+
+### The flow
+
+1. `useOptimistic` updates the UI instantly (optimistic state)
+2. `useTransition` wraps the async mutation to track pending state
+3. Server Action writes to the database and calls `updateTag()` (or `refresh()` for uncached routes)
+4. Next.js refetches the tagged data on the server
+5. Server Component re-renders with the authoritative fresh data
+6. The optimistic state is replaced by the real server state
+7. On error, the UI can show an error message and reconcile on next navigation
 
 ## Typing Promises Correctly
 
@@ -448,5 +466,7 @@ export default function ProductList() {
 - Client Components call `use()` to unwrap
 - Wrap with `<Suspense>` for loading states
 - Choose between per-section or page-level Suspense based on UX needs
-- Use `useOptimistic` for instant mutation feedback
+- Optimistic UI updates (`useOptimistic`) + server cache invalidation/refresh — not optimistic UI alone
+- Always include pending state guards (`useTransition`, `useActionState`, or `useFormStatus`) and error rollback
+- Server Actions must call `updateTag()` (cached data) or `refresh()` (uncached) — see **`nextjs16-cache-revalidation`** for the full decision matrix
 - Never use `useEffect` to handle these promises

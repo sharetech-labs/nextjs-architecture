@@ -696,27 +696,28 @@ export async function setTheme(theme: 'light' | 'dark') {
 
 ### Revalidation and Redirection
 
-Next.js provides two revalidation strategies. Choose based on how your data is consumed:
+Next.js 16 provides multiple revalidation strategies. Choose based on cache mode and consistency needs:
 
-- **`revalidateTag()`** — Preferred when data is shared across multiple routes. Invalidates a specific data resource everywhere it appears. See **`nextjs16-cache-revalidation`** for the advanced tag-based strategy.
-- **`revalidatePath()`** — Useful when data is isolated to a single route, or for a broad layout-level cache reset.
+- **`updateTag(tag)`** — Server Action immediate read-your-own-writes. Preferred for interactive mutations where the user must see their change immediately.
+- **`revalidateTag(tag, 'max')`** — Server Action/Route Handler eventual consistency (SWR). Marks data stale; next request serves stale while background refreshes.
+- **`revalidatePath(path)`** — Route-specific broad invalidation. Useful when data is isolated to a single route or for layout-level cache resets.
+- **`refresh()`** — Refreshes the route payload for uncached dynamic data (`force-dynamic`/`no-store`). Does not invalidate tagged caches.
+
+**Note:** `revalidateTag(tag)` without a second argument is deprecated in Next.js 16. See **`nextjs16-cache-revalidation`** for the full invalidation decision matrix.
 
 ```typescript
 // app/actions.ts
 'use server';
 
-import { revalidatePath, revalidateTag } from 'next/cache';
+import { updateTag } from 'next/cache';
 import { redirect } from 'next/navigation';
 
 export async function deletePost(postId: string) {
   await db.posts.delete({ where: { id: postId } });
 
-  // Option A: Tag-based (preferred for shared data)
-  revalidateTag('posts');
-  revalidateTag(`post-${postId}`);
-
-  // Option B: Path-based (for route-isolated data)
-  revalidatePath('/posts');
+  // Tag-based immediate invalidation (preferred for shared data)
+  updateTag('posts');
+  updateTag(`post-${postId}`);
 
   // Redirect after deletion
   redirect('/posts');
@@ -1486,4 +1487,4 @@ export default function NewPost() {
 - **Draft Mode** - Preview draft content from CMS
 - **Streaming** - Progressive rendering with Suspense boundaries
 - **Cookies** - Access and set cookies in Route Handlers and Server Actions
-- **Revalidation** - Invalidate cache with `revalidatePath` and `revalidateTag`
+- **Revalidation** - Invalidate cache with `updateTag`, `revalidateTag(tag, 'max')`, `revalidatePath`, or `refresh`

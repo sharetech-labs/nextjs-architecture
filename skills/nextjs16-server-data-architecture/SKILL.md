@@ -1,6 +1,6 @@
 ---
 name: nextjs16-server-data-architecture
-description: Core architectural philosophy for Next.js 16 + React 19 server-rendered applications. CRITICAL for understanding the Server-Authoritative Data Model. Activates when prompt mentions data fetching strategy, useEffect for refetching, client-side data loading, SWR, React Query, or architectural decisions about where data should be fetched. Essential for enforcing the rule that all authoritative data flows through Server Components and Server Actions — never through client-side refetch logic. See also nextjs16-cache-revalidation, nextjs16-use-hook-data-flow, and nextjs16-page-level-suspense for complementary patterns.
+description: Core architectural philosophy for Next.js 16 + React 19 server-rendered applications. CRITICAL for understanding the Server-Authoritative Data Model. Activates when prompt mentions data fetching strategy, useEffect for refetching, client-side data loading, SWR, React Query, updateTag, refresh, force-dynamic, no-store, or architectural decisions about where data should be fetched. Essential for enforcing the rule that all authoritative data flows through Server Components and Server Actions — never through client-side refetch logic. See also nextjs16-cache-revalidation, nextjs16-use-hook-data-flow, and nextjs16-page-level-suspense for complementary patterns.
 allowed-tools: Read, Write, Edit, Glob, Grep, Bash
 ---
 
@@ -24,8 +24,11 @@ This skill defines the philosophy. For implementation details, see:
 3. **Client Components call `use()` to unwrap the Promise**
 4. **Suspense handles loading states**
 5. **Mutations happen via Server Actions**
-6. **Fresh data is triggered via `revalidateTag()`**
-7. **Optimistic cache updates provide immediate UI feedback**
+6. **Freshness strategy is chosen by cache mode and consistency needs:**
+   - Cached + immediate consistency -> `updateTag(tag)` (Server Actions only)
+   - Cached + eventual consistency -> `revalidateTag(tag, 'max')` (SWR)
+   - Uncached dynamic/no-store -> `refresh()` or `redirect()`
+7. **Optimistic UI updates (`useOptimistic`) provide immediate feedback, paired with server-side cache invalidation/refresh**
 
 ### What this architecture avoids:
 
@@ -91,30 +94,42 @@ export default function ProductList({
 ```
 
 ```tsx
-// 3. Server Action handles mutations
+// 3. Server Action handles mutations (cached data — read-your-own-writes)
 'use server'
 
-import { revalidateTag } from 'next/cache'
+import { updateTag } from 'next/cache'
 
 export async function updateProduct(id: string, data: Partial<Product>) {
   await db.products.update({ where: { id }, data })
 
-  // Revalidate the tag — fresh data flows automatically
-  revalidateTag('products')
+  // Immediate read-your-own-writes — user sees their change on next render
+  updateTag('products')
+  updateTag(`product-${id}`)
 }
 ```
 
 ### How data gets refreshed
 
-After a mutation, the cycle is:
+After a mutation, the flow branches based on cache mode:
 
 ```
-User action → Server Action → Database write → revalidateTag()
-→ Next.js refetches tagged data → Server Component re-renders
-→ New promise passed to Client Component → use() unwraps fresh data
+Mutation in Server Action
+  │
+  ├─ Branch A: Cached data
+  │   ├─ Immediate consistency → updateTag(tag)
+  │   └─ Eventual consistency  → revalidateTag(tag, 'max')
+  │
+  └─ Branch B: Uncached (no-store / force-dynamic)
+      └─ refresh() or redirect()
+
+→ Server re-renders with fresh data
+→ New RSC payload sent to client
+→ use() unwraps fresh data in Client Component
 ```
 
 The client never polls, refetches, or manages staleness. The server is the single source of truth.
+
+See **`nextjs16-cache-revalidation`** for the full invalidation decision matrix.
 
 ## Anti-Patterns — What NOT to Do
 
@@ -164,7 +179,7 @@ export default function ProductForm({ productId }: { productId: string }) {
 }
 ```
 
-**Why it's wrong:** The correct approach is to call a Server Action that writes to the database and calls `revalidateTag()`. The server handles freshness, not the client.
+**Why it's wrong:** The correct approach is to call a Server Action that writes to the database and calls `updateTag()` (for cached data) or `refresh()` (for uncached dynamic data). The server handles freshness, not the client.
 
 ### Anti-Pattern 3: SWR / React Query for server data
 
@@ -180,7 +195,7 @@ export default function OrderList() {
 }
 ```
 
-**Why it's wrong:** These tools are designed for client-first architectures. This architecture is server-first. Data freshness is managed via `revalidateTag()`, not client-side polling or revalidation.
+**Why it's wrong:** These tools are designed for client-first architectures. This architecture is server-first. Data freshness is managed via `updateTag()`, `revalidateTag(tag, 'max')`, or `refresh()` — not client-side polling or revalidation.
 
 ## When Client-Side State IS Appropriate
 
@@ -192,6 +207,44 @@ Client-side state management (`useState`, `useReducer`) is correct for:
 - **Ephemeral state:** drag positions, scroll offsets, animation state
 
 The rule is: **if the data originates from the server, it flows through Server Components. If the state is purely a UI concern, it lives in Client Components.**
+
+## Additional Anti-Patterns
+
+### Anti-Pattern 4: Calling revalidateTag for uncached data
+
+```tsx
+// WRONG — data fetched with no-store is not cached; tag invalidation has no effect
+'use server'
+import { revalidateTag } from 'next/cache'
+
+export async function updateLiveData(data: LiveInput) {
+  await db.liveData.update({ data })
+  revalidateTag('live-data', 'max')  // No cache entry to invalidate
+}
+```
+
+**Why it's wrong:** `force-dynamic` and `no-store` data is never cached, so tag invalidation is a no-op. Use `refresh()` or `redirect()` instead.
+
+### Anti-Pattern 5: Relying on single-arg revalidateTag in new code
+
+```tsx
+// WRONG — deprecated single-argument form
+revalidateTag('products')
+```
+
+**Why it's wrong:** `revalidateTag(tag)` without a second argument is deprecated in Next.js 16. Use `updateTag(tag)` for immediate consistency in Server Actions, or `revalidateTag(tag, 'max')` for SWR semantics.
+
+### Anti-Pattern 6: Optimistic UI without server invalidation
+
+```tsx
+// WRONG — optimistic update alone does not guarantee data correctness
+const handleDelete = async (id: string) => {
+  removeOptimistic(id)
+  await deleteItem(id)  // Server Action with no cache invalidation
+}
+```
+
+**Why it's wrong:** `useOptimistic` is optimistic UI state, not cache invalidation. The Server Action must also call `updateTag()` (cached data) or `refresh()` (uncached data) to ensure the server state is correct for all users and subsequent navigations.
 
 ## Architecture Diagram
 
@@ -213,7 +266,10 @@ Server Component (page.tsx)
               │
               Server Action ('use server')
                 ├─ Writes to database
-                └─ Calls revalidateTag() → triggers fresh server fetch
+                └─ Chooses freshness strategy:
+                    ├─ Cached + immediate → updateTag(tag)
+                    ├─ Cached + eventual  → revalidateTag(tag, 'max')
+                    └─ Uncached dynamic   → refresh() or redirect()
 ```
 
 ## Summary
@@ -221,5 +277,12 @@ Server Component (page.tsx)
 - Server Components own data fetching
 - Client Components own interactivity
 - `use()` bridges the two via Promises
-- `revalidateTag()` keeps data fresh
+- Freshness is managed by cache mode and consistency needs:
+  - `updateTag()` for immediate read-your-own-writes (Server Actions, cached data)
+  - `revalidateTag(tag, 'max')` for SWR/eventual consistency (webhooks, cached data)
+  - `refresh()` or `redirect()` for uncached `force-dynamic`/`no-store` routes
+- `revalidateTag(tag)` single-arg form is deprecated — always provide a second argument
+- Tag invalidation only works on cached data — uncached routes need `refresh()`
+- Optimistic UI (`useOptimistic`) must be paired with server-side cache invalidation
 - No `useEffect` for data. Ever.
+- See **`nextjs16-cache-revalidation`** for the full invalidation decision matrix

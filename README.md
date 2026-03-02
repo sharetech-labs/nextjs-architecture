@@ -58,10 +58,27 @@ Clone this repo and copy the `skills/` directory into your project's `.claude/sk
 
 | Skill | Description |
 |-------|-------------|
-| `nextjs16-server-data-architecture` | Server-Authoritative Data Model — core philosophy for server-rendered applications |
-| `nextjs16-cache-revalidation` | Tag-based cache revalidation with `revalidateTag()` — why it's preferred over `revalidatePath()` |
-| `nextjs16-use-hook-data-flow` | React 19 `use()` hook data flow — passing Promises from Server to Client Components |
+| `nextjs16-server-data-architecture` | Server-Authoritative Data Model — core philosophy for server-rendered applications with branching freshness strategies |
+| `nextjs16-cache-revalidation` | Cache invalidation strategy using `updateTag`, `revalidateTag`, and `refresh` — choosing the right API by consistency requirements and cache mode |
+| `nextjs16-use-hook-data-flow` | React 19 `use()` hook data flow — passing Promises from Server to Client Components with complete optimistic UI patterns |
 | `nextjs16-page-level-suspense` | Page-level holistic Suspense loading — unified skeletons for smooth page transitions |
+
+### Next.js 16 Cache Strategy & Server-Side Data Freshness
+
+The advanced skills encode a critical awareness of how Next.js 16 handles cache invalidation. Rather than a one-size-fits-all `revalidateTag()` call, the correct API depends on **cache mode** and **consistency requirements**:
+
+| Scenario | API | Behavior |
+|----------|-----|----------|
+| Interactive mutation — user must see their own write | `updateTag(tag)` | Immediate expiration (Server Actions only) |
+| Webhook or background job — eventual consistency is fine | `revalidateTag(tag, 'max')` | Stale-while-revalidate (SWR) |
+| Uncached route (`force-dynamic` / `no-store`) | `refresh()` or `redirect()` | No cache entry exists to invalidate |
+
+Key points Claude is now aware of:
+- **`revalidateTag(tag)` single-arg form is deprecated** in Next.js 16 — a second argument is always required
+- **Tag invalidation only works on cached data** — calling `updateTag` or `revalidateTag` on `force-dynamic`/`no-store` routes is a silent no-op
+- **Cache entries are capped at 2MB** — oversized payloads are never cached, so tags have no effect; the skills teach a chunking strategy to break large data into independently tagged units
+- **Optimistic UI is not cache invalidation** — `useOptimistic` must always be paired with server-side freshness (`updateTag` or `refresh`), plus pending-state guards and error rollback
+- **`refresh()` refreshes the route payload but does not invalidate tagged caches** — it is the correct tool for uncached dynamic routes, not a substitute for tag-based invalidation
 
 ## How It Works
 
