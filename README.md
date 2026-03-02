@@ -2,6 +2,8 @@
 
 14 Claude Code skills that give Claude deep knowledge of Next.js App Router architecture, Server/Client Component patterns, data fetching, caching, routing, Suspense, and the Vercel AI SDK.
 
+What makes this enhanced skill repo unique is how it codifies a modern React methodology around less code and clearer boundaries: a server-authoritative data model, Server Actions instead of noisy `useEffect` orchestration, and React 19 `use()` flows that remove client-side fetch boilerplate. Combined with the ability to produce page-level or nested Suspense patterns, Claude is enabled to provide elegant and consolidated loader patterns, stronger security by keeping sensitive logic on the server, and a faster path to maintainable production architecture.
+
 ## Quick Install
 
 ### Option 1: npx (recommended)
